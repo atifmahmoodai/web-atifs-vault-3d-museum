@@ -1,0 +1,14 @@
+{
+  "_readme": "Performance budget enforced by tests/e2e/perf-budget.spec.js (runtime) and scripts/check-assets.mjs (asset weight). Raise a number only with a reason in the commit message.",
+  "firstPartyBytes": 92160,
+  "allowedThirdPartyPrefixes": ["https://unpkg.com/three@0.160.0/"],
+  "maxRequests": 20,
+  "readyMs": 10000,
+  "drawCalls": 140,
+  "triangles": 60000,
+  "geometries": 150,
+  "textures": 24,
+  "maxPixelRatio": 1.75,
+  "maxModelBytes": 8388608,
+  "totalModelBytes": 41943040
+}
