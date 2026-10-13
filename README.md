@@ -1,11 +1,37 @@
-[README.md](https://github.com/user-attachments/files/30840246/README.md)
 # Atif's Vault
 
 A walkable 3D car museum that runs in a browser tab. One HTML file, no build step, no game engine.
 
 Every surface of the building — the tiled floor, the wall signage, the backlit sign, the LED tickers wrapping each plinth, the vending machine — is drawn in code at runtime. No textures are downloaded for any of it.
 
-**The car models are not in this repo.** They're Creative Commons work by eleven different creators, and redistributing them here would strip the attribution from the file. This README shows you how to get your own — or the same eleven, if you want to rebuild it exactly.
+**The car models are not in this repo.** They're Creative Commons work by eleven different creators, and redistributing them here would strip the attribution from the file. Until you approve your own, every plinth shows a **procedural placeholder car** drawn in code, so the museum works straight after cloning. This README shows you how to get and approve real models.
+
+## Build status
+
+| Area | Status |
+|---|---|
+| Runs with no third-party models | ✅ 11 procedural placeholders; nothing is fetched unless approved |
+| Licence/attribution gate | ✅ `assets/manifest.json` + `src/assets.js`: only approved CC-BY-4.0, CC0-1.0 or owned assets load; NC/ND/unknown can never be approved; the credits wall lists approved assets only |
+| No-WebGL fallback | ✅ accessible text gallery when WebGL is missing, the renderer fails, the engine does not load within 20 s, or `?nowebgl` is used |
+| Reduced motion | ✅ `prefers-reduced-motion` (or `?motion=reduce`) freezes turntables, tickers and camera sweeps |
+| Accessibility | ✅ axe (WCAG 2.1 AA + best practice) clean on the entry screen and the fallback; keyboard-operable entry |
+| Performance budget | ✅ `perf-budget.json`, enforced in CI (page weight, requests, origins, ready time, draw calls, triangles, textures, pixel ratio, model sizes) |
+| CI | ✅ `.github/workflows/ci.yml`: unit tests, asset register check, Playwright + axe in Chromium |
+| Licensed car models | ⏳ owner action: approve each asset in the manifest (step 5) |
+
+`Car Vault.zip` is the original upload, kept for reference; `index.html` and `src/` are the maintained source.
+
+### Testing
+
+```bash
+npm ci
+npm run test:unit          # licence gate rules
+npm run check:assets       # manifest, committed files, model weight budget
+npx playwright install chromium
+npx playwright test        # smoke, axe, fallback, reduced motion, performance budget
+```
+
+Playwright serves Three.js from `node_modules` (same pinned 0.160.0 as the import map), so the tests run offline.
 
 ---
 
@@ -40,6 +66,8 @@ No React, no bundler, no npm install for the site itself. Three.js loads from a 
 ```
 your-project/
 ├── index.html          ← this repo
+├── src/cars.js         ← the collection (names, positions, blurbs)
+├── assets/manifest.json← approval register: licence, creator, source
 ├── optimized/          ← your .glb car models
 │   ├── ferrari.glb
 │   ├── charger.glb
@@ -120,9 +148,9 @@ If a car is still over 10 MB, re-run with `--texture-size 1024`.
 
 ---
 
-## Step 4 — Register your cars in `index.html`
+## Step 4 — Register your cars in `src/cars.js`
 
-Find the `CARS` array near the top of the script block. Each entry:
+Edit the `CARS` array. Each entry (the model path now lives in the manifest, step 5):
 
 ```js
 { key:'ferrari',   file:'optimized/ferrari.glb',   x:0, z:0, wing:'HERO', idx:'00', yOff:0.04,
@@ -154,19 +182,17 @@ The alternating `z` is deliberate — walking the centre line of a wing puts car
 
 ---
 
-## Step 5 — Credit the creators
+## Step 5 — Approve and credit each model
 
-Find the `CREDITS` array:
+Add or edit the car's entry in `assets/manifest.json`:
 
-```js
-const CREDITS = [
-  ['FERRARI 288 GTO','Randomness'],
-  ['1969 DODGE CHARGER R/T','Galaxy Car Showroom'],
-  // ...
-];
+```json
+{ "key": "ferrari", "title": "Ferrari 288 GTO", "creator": "Randomness", "licence": "CC-BY-4.0",
+  "source": "https://sketchfab.com/3d-models/…", "model": "optimized/ferrari.glb",
+  "portrait": "portraits/ferrari.jpg", "approved": true, "approvedBy": "Atif", "approvedOn": "2026-10-13" }
 ```
 
-Car name, then the Sketchfab creator's username. This renders as a register on the lobby's south wall — visible inside the building, where people walk past it.
+The model is only loaded when `approved` is true, the licence is CC-BY-4.0, CC0-1.0 or OWNED, and title, creator, https source and the approval record are filled in. Otherwise the plinth keeps its placeholder. `npm run check:assets` fails if a file in `optimized/` or `portraits/` has no approved entry, or a model is over budget. Approved entries render as a register on the lobby's south wall — visible inside the building, where people walk past it. The original eleven creators are already listed, unapproved, so you can confirm each licence and flip the switch.
 
 **Don't skip this.** CC-BY is a licence with one condition, and this is that condition. Putting it on the wall rather than in a description box costs you nothing and it's the right thing to do.
 
@@ -225,10 +251,10 @@ Click to enter. **WASD** to move, **mouse** to look, **Shift** to run, **scroll*
 
 The code in `index.html` is MIT — do what you like with it.
 
-The car models are **not** included and are **not** covered by that. Each is Creative Commons Attribution and belongs to its creator. If you use the same eleven, keep the `CREDITS` array intact.
+The car models are **not** included and are **not** covered by that. Each is Creative Commons Attribution and belongs to its creator. If you use the same eleven, keep their manifest entries intact.
 
 ---
 
 ## Credits
 
-Built with [Three.js](https://threejs.org). Car models by the eleven Sketchfab creators listed in `CREDITS` inside `index.html` — and on the wall, in the building.
+Built with [Three.js](https://threejs.org). Car models by the eleven Sketchfab creators listed in `assets/manifest.json` — and on the wall, in the building.
