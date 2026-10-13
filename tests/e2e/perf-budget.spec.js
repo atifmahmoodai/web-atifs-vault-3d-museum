@@ -4,10 +4,9 @@ import { test, expect, waitForVault } from './fixtures.js';
 const budget = JSON.parse(readFileSync(new URL('../../perf-budget.json', import.meta.url)));
 
 test('page weight, requests and origins stay within budget', async ({ page }) => {
-  const started = Date.now();
   await page.goto('/index.html');
   await waitForVault(page);
-  const readyMs = Date.now() - started;
+  const readyMs = await page.evaluate(() => window.__vault.readyMs); /* navigation start to scene built */
   const entries = await page.evaluate(() => [
     { name: location.href, size: performance.getEntriesByType('navigation')[0].decodedBodySize },
     ...performance.getEntriesByType('resource').map((e) => ({ name: e.name, size: e.decodedBodySize })),

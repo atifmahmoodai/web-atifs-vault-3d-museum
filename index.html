@@ -917,7 +917,7 @@ function repaintCar(root, key){
 }
 
 function loadNext(i){
-  if (i >= CARS.length){ VAULT.ready = true; document.documentElement.dataset.vaultReady = '1'; return; }
+  if (i >= CARS.length){ VAULT.readyMs = Math.round(performance.now()); VAULT.ready = true; document.documentElement.dataset.vaultReady = '1'; return; }
   const car = CARS[i];
   const tt = turntables[i];
   const asset = approvedAsset(MANIFEST, car.key);

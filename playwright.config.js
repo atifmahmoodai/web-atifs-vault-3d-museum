@@ -4,6 +4,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
+  /* one worker in CI: SwiftShader is CPU-bound and parallel pages distort the timing budget */
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',
