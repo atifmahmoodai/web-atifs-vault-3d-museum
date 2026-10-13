@@ -1,0 +1,15 @@
+{
+  "name": "atifs-vault-3d-museum",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "check:assets": "node scripts/check-assets.mjs",
+    "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "three": "0.160.0"
+  }
+}

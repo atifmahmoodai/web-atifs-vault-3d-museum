@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ATIF'S VAULT — Modern Performance Collection</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    --ink:#1b1c1e; --shell:#f2f3f4; --line:#d0d2d5; --steel:#26282b; --red:#d21f2b;
+    --cond:'Arial Narrow','Roboto Condensed',Arial,sans-serif;
+    --mono:'Consolas','Menlo','Courier New',monospace;
+  }
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--shell);color:var(--ink);
+    font-family:var(--cond);-webkit-font-smoothing:antialiased;}
+  canvas{display:block}
+
+  /* ---- entry overlay ---- */
+  #blocker{position:fixed;inset:0;background:var(--shell);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;z-index:20;cursor:pointer;user-select:none;text-align:center}
+  #blocker .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.35em;color:#7a7d81;text-transform:uppercase}
+  #blocker h1{font-family:var(--cond);font-weight:800;font-size:clamp(52px,9vw,120px);letter-spacing:.01em;
+    margin:.1em 0 .05em;text-transform:uppercase}
+  #blocker .rule{width:88px;height:5px;background:var(--red);margin:10px 0 18px}
+  #blocker .sub{font-family:var(--mono);font-size:13px;letter-spacing:.22em;color:#55585c;text-transform:uppercase}
+  #controls{display:flex;gap:26px;margin-top:42px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    color:#55585c;text-transform:uppercase}
+  #controls b{display:block;color:var(--ink);font-size:13px;margin-bottom:4px}
+  #enter{margin-top:52px;font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--red);text-transform:uppercase}
+  #loadline{margin-top:14px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:#8a8d91;text-transform:uppercase}
+
+  /* ---- HUD ---- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10;display:none}
+  #dot{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;
+    background:var(--ink);opacity:.55}
+  #loadList{position:absolute;top:18px;right:20px;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:#6a6d71;text-align:right;line-height:1.75}
+  #loadList .done{color:var(--ink)} #loadList .err{color:var(--red)}
+  #card{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);min-width:340px;max-width:520px;
+    background:#fdfdfe;border:1px solid var(--line);border-left:6px solid var(--red);
+    padding:14px 20px 13px;box-shadow:0 10px 30px rgba(20,22,25,.10);opacity:0;transition:opacity .18s}
+  #card.show{opacity:1}
+  #cardMeta{font-family:var(--mono);font-size:10px;letter-spacing:.24em;color:#8a8d91;text-transform:uppercase}
+  #cardName{font-weight:800;font-size:24px;letter-spacing:.02em;text-transform:uppercase;margin:3px 0 5px}
+  #cardBlurb{font-family:var(--mono);font-size:12px;line-height:1.55;color:#45484c;margin:0}
+</style>
+</head>
+<body>
+
+<div id="blocker">
+  <div class="eyebrow">Hall 02 · Private Collection</div>
+  <h1>Atif's Vault</h1>
+  <div class="rule"></div>
+  <div class="sub">Modern Performance Collection · 11 Machines</div>
+  <div id="controls">
+    <div><b>W A S D</b>Move</div>
+    <div><b>Mouse</b>Look</div>
+    <div><b>Shift</b>Run</div>
+    <div><b>Wheel</b>Zoom</div>
+    <div><b>Esc</b>Menu</div>
+  </div>
+  <div id="enter">Click anywhere to enter</div>
+  <div id="loadline">Preparing collection…</div>
+</div>
+
+<div id="hud">
+  <div id="dot"></div>
+  <div id="loadList"></div>
+  <div id="card">
+    <div id="cardMeta"></div>
+    <div id="cardName"></div>
+    <p id="cardBlurb"></p>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { approvedAsset, creditsFor } from './src/assets.js';
+import { placeholderCar } from './src/placeholder.js';
+
+/* approved-asset register: anything not approved is drawn as a procedural placeholder */
+const MANIFEST = await fetch('assets/manifest.json').then(r => r.ok ? r.json() : { assets: [] }).catch(() => ({ assets: [] }));
+
+/* ============================================================
+   COLLECTION — load order = array order (hero first, then
+   alternating wings from the doorways outward)
+   ============================================================ */
+const CARS = [
+  { key:'ferrari',   x:0,   z:0,    wing:'HERO', idx:'00', yOff:0.04,
+    name:'Ferrari 288 GTO', len:4.6,
+    blurb:'Born for a Group B era that never came — a twin-turbo V8 in the body that started the modern Ferrari supercar line. 272 built.' },
+
+  { key:'charger',   x:-17, z: 3.2, wing:'A', idx:'01',
+    name:'1969 Dodge Charger R/T', len:4.3,
+    blurb:'The coke-bottle Mopar icon. Hidden headlights, 440 Magnum torque, and a silhouette every chase scene since has been chasing.' },
+
+  { key:'aston',     x: 17, z: 3.2, wing:'B', idx:'01',
+    name:'Aston Martin V12 Vantage', len:4.3,
+    blurb:'Aston\u2019s smallest body stuffed with its biggest engine — a 5.9-litre V12 and one of the last great naturally aspirated GTs.' },
+
+  { key:'camaro',    x:-24, z:-3.2, wing:'A', idx:'02',
+    name:'1970 Camaro Pro Touring', len:4.3,
+    blurb:'Second-gen F-body rebuilt to corner as hard as it launches — classic muscle skin over modern chassis thinking.' },
+
+  { key:'bmw_m4',    x: 24, z:-3.2, wing:'B', idx:'02',
+    name:'BMW M4 (F82)', len:4.3,
+    blurb:'The first turbocharged M4 — a 3.0 twin-turbo straight-six and a chassis sharp enough to make the purists forgive the sound.' },
+
+  { key:'challenger',file:'optimized/challenger.glb', x:-31, z: 3.2, wing:'A', idx:'03',
+    name:'1971 Dodge Challenger', len:4.3,
+    blurb:'Dodge\u2019s E-body brawler in triple black. Long hood, short deck, zero apologies.' },
+
+  { key:'porsche',   x: 31, z: 3.2, wing:'B', idx:'03',
+    name:'Porsche 911', len:4.3,
+    blurb:'The rear-engined constant. Six decades of one silhouette, refined until physics gave up arguing.' },
+
+  { key:'mustang',   x:-38, z:-3.2, wing:'A', idx:'04',
+    name:'\u201969 Mustang · John Bowe', len:4.3,
+    blurb:'A Trans-Am-bred \u201969 in touring-car legend John Bowe\u2019s race livery — built for circuits, not boulevards.' },
+
+  { key:'amg_gt3',   x: 38, z:-3.2, wing:'B', idx:'04',
+    name:'Mercedes-AMG GT3 Evo', len:4.3,
+    blurb:'Customer racing, factory violence — a 6.3-litre V8 GT3 machine wearing full aero.' },
+
+  { key:'hoonicorn', x:-45, z: 3.2, wing:'A', idx:'05',
+    name:'Hoonicorn V2', len:4.3,
+    blurb:'Ken Block\u2019s 1,400 hp AWD twin-turbo \u201965 Mustang — the internet\u2019s most famous tire destroyer.' },
+
+  { key:'supra',     x: 45, z: 3.2, wing:'B', idx:'05',
+    name:'Toyota Supra MK IV', len:4.3,
+    blurb:'The 2JZ legend. Sequential turbos, a bulletproof block, and a tuner ceiling nobody has found yet.' },
+];
+
+/* read-only status for tests and diagnostics */
+const VAULT = window.__vault = { ready:false, placeholders:[], cars: CARS.map(c => c.key) };
+
+const WING_LABEL = { HERO:'LOBBY · HALO CAR', A:'WING A · AMERICAN MUSCLE', B:'WING B · EURO + JDM' };
+
+/* ============================================================
+   RENDERER / SCENE
+   ============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf2f3f4);
+scene.fog = new THREE.Fog(0xf2f3f4, 45, 110);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 200);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd2d4, 0.5));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+sun.position.set(10, 16, 6);
+scene.add(sun);
+
+const MAX_ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+/* ============================================================
+   MATERIALS
+   ============================================================ */
+const M = {
+  floor : new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.3, metalness:0.0, envMapIntensity:0.75 }),
+  wall  : new THREE.MeshStandardMaterial({ color:0xf7f8f9, roughness:0.95, metalness:0.0, envMapIntensity:0.35 }),
+  steel : new THREE.MeshStandardMaterial({ color:0x26282b, roughness:0.5,  metalness:0.6, envMapIntensity:0.5 }),
+  plinth: new THREE.MeshStandardMaterial({ color:0xfafbfc, roughness:0.55, metalness:0.0, envMapIntensity:0.4 }),
+  ring  : new THREE.MeshStandardMaterial({ color:0x202225, roughness:0.4,  metalness:0.5 }),
+  lightbar: new THREE.MeshBasicMaterial({ color:0xffffff }),
+  inlay : new THREE.MeshStandardMaterial({ color:0x2a2c2e, roughness:0.6 }),
+  plastic: new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.35 }),
+  leaf  : new THREE.MeshStandardMaterial({ color:0x2e6b43, roughness:0.85, flatShading:true }),
+  leafDark: new THREE.MeshStandardMaterial({ color:0x1f5233, roughness:0.85, flatShading:true }),
+  trunk : new THREE.MeshStandardMaterial({ color:0x6b5a48, roughness:0.9 }),
+};
+
+/* ============================================================
+   ARCHITECTURE
+   lobby: 24 x 24 (x,z in ±12), h 7 — wings: x 12→52 / -12→-52, z ±6, h 5.5
+   ============================================================ */
+const arch = new THREE.Group(); scene.add(arch);
+
+function box(w,h,d, x,y,z, mat){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z); arch.add(m); return m;
+}
+
+/* hanging ceiling light: steel housing + glowing panel + drop rods */
+function ceilingLight(w, d, x, y, z){
+  const g = new THREE.Group();
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(w+0.18, 0.12, d+0.18), M.steel);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, d), M.lightbar);
+  panel.position.y = -0.05;
+  g.add(housing, panel);
+  const rodGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.5, 6);
+  for (const rx of [-w/2+0.15, w/2-0.15]){
+    const rod = new THREE.Mesh(rodGeo, M.steel);
+    rod.position.set(rx, 0.3, 0); g.add(rod);
+  }
+  g.position.set(x, y, z); arch.add(g); return g;
+}
+
+/* floor — single slab so the tile grid stays aligned everywhere */
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(130,40), M.floor);
+floor.rotation.x = -Math.PI/2; scene.add(floor);
+
+/* lobby walls (openings x=±12, |z|<3, up to y 4.2) */
+box(24.6,7,0.3,   0,3.5,-12, M.wall);              /* north (sign wall) */
+box(24.6,7,0.3,   0,3.5, 12, M.wall);              /* south (register wall) */
+for (const s of [1,-1]){
+  box(0.3,7,9.3,  12*s,3.5,-7.65, M.wall);
+  box(0.3,7,9.3,  12*s,3.5, 7.65, M.wall);
+  box(0.3,2.8,6,  12*s,5.6, 0,    M.wall);         /* above doorway */
+  /* doorway frame */
+  box(0.5,4.2,0.5, 12*s,2.1,-3,  M.steel);
+  box(0.5,4.2,0.5, 12*s,2.1, 3,  M.steel);
+  box(0.5,0.5,6.6, 12*s,4.45,0,  M.steel);
+}
+
+/* wings */
+for (const s of [1,-1]){
+  box(40,5.5,0.3, 32*s,2.75,-6, M.wall);
+  box(40,5.5,0.3, 32*s,2.75, 6, M.wall);
+  box(0.3,5.5,12.6, 52*s,2.75,0, M.wall);          /* end cap */
+  box(40.9,0.2,12.6, 32*s,5.6,0, M.wall);          /* wing ceiling */
+}
+box(24.6,0.2,24.6, 0,7.1,0, M.wall);               /* lobby ceiling */
+
+/* trusses + ducts + lightbars — the visible industrial layer */
+for (const s of [1,-1]){
+  for (const tx of [15,21.8,28.6,35.4,42.2,49]) box(0.35,0.5,11.8, tx*s,5.15,0, M.steel);
+  const duct = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,39,20), M.steel);
+  duct.rotation.z = Math.PI/2; duct.position.set(32*s,4.8,0); arch.add(duct);
+  for (const lx of [18.4,25.2,32,38.8,45.6]){
+    ceilingLight(3.2, 0.8, lx*s, 5.12,  2.6);
+    ceilingLight(3.2, 0.8, lx*s, 5.12, -2.6);
+  }
+}
+for (const tz of [-7,0,7]) box(24,0.5,0.35, 0,6.6,tz, M.steel);
+const lduct = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,23,20), M.steel);
+lduct.rotation.x = Math.PI/2; lduct.position.set(-6,6.4,0); arch.add(lduct);
+for (const p of [[-5.2,-5.2],[5.2,-5.2],[-5.2,5.2],[5.2,5.2]]) ceilingLight(3.6, 1.1, p[0], 6.55, p[1]);
+
+/* drop rods for the ceiling ticker ring (the ring itself is built
+   further down, once the LED strip builder exists) */
+for (const a of [0, 2.094, 4.188]){
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.55, 6), M.steel);
+  rod.position.set(Math.cos(a)*3.1, 6.33, Math.sin(a)*3.1); scene.add(rod);
+}
+
+/* corner security cameras — slow pan, blinking rec light */
+const camPivots = [];
+function cctv(x, y, z, tx, ty, tz){
+  const mount = new THREE.Group(); mount.position.set(x, y, z);
+  mount.lookAt(tx, ty, tz);
+  const pivot = new THREE.Group(); mount.add(pivot);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 8), M.steel);
+  arm.rotation.x = Math.PI/2; arm.position.z = 0.17; pivot.add(arm);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.42), M.steel);
+  body.position.z = 0.5; pivot.add(body);
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.1, 12),
+    new THREE.MeshStandardMaterial({ color:0x0a0b0c, roughness:0.2, metalness:0.4 }));
+  lens.rotation.x = Math.PI/2; lens.position.z = 0.76; pivot.add(lens);
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8),
+    new THREE.MeshBasicMaterial({ color:0xd21f2b }));
+  led.position.set(0, 0.1, 0.38); pivot.add(led);
+  scene.add(mount);
+  camPivots.push({ pivot, led, phase: Math.random()*Math.PI*2 });
+}
+cctv( 11.6, 6.35,  11.6, 0, 1.2, 0);
+cctv(-11.6, 6.35,  11.6, 0, 1.2, 0);
+cctv( 11.6, 6.35, -11.6, 0, 1.2, 0);
+cctv(-11.6, 6.35, -11.6, 0, 1.2, 0);
+cctv( 51.6, 5.0,  5.6,  20, 1.2, 0);
+cctv(-51.6, 5.0,  5.6, -20, 1.2, 0);
+
+/* solid props the player shouldn't walk through */
+const BLOCKERS = [];
+
+/* wall-mounted split AC units */
+function acUnit(x, y, z, rotY){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 0.3), M.plastic);
+  g.add(body);
+  const vent = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 0.02), M.steel);
+  vent.position.set(0, -0.13, 0.155); g.add(vent);
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
+    new THREE.MeshBasicMaterial({ color:0x35d06a }));
+  led.position.set(0.62, -0.1, 0.16); g.add(led);
+  g.position.set(x, y, z); g.rotation.y = rotY || 0;
+  scene.add(g);
+}
+acUnit( 8.5, 5.6, -11.78, 0);
+acUnit(-8.5, 5.6, -11.78, 0);
+acUnit( 8.5, 5.6,  11.78, Math.PI);
+acUnit(-8.5, 5.6,  11.78, Math.PI);
+acUnit( 51.69, 4.3, -2, -Math.PI/2);
+acUnit(-51.69, 4.3, -2,  Math.PI/2);
+
+/* potted corner plants — faceted low-poly topiary */
+function plant(x, z, s){
+  const g = new THREE.Group();
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.24, 0.5, 24), M.plinth);
+  pot.position.y = 0.25; g.add(pot);
+  const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 24),
+    new THREE.MeshStandardMaterial({ color:0x2a241f, roughness:1 }));
+  soil.position.y = 0.5; g.add(soil);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.85, 8), M.trunk);
+  trunk.position.y = 0.9; g.add(trunk);
+  const blobs = [[0,1.55,0,0.42],[0.22,1.35,0.1,0.30],[-0.2,1.42,-0.12,0.28],[0.05,1.78,-0.05,0.26]];
+  for (let i = 0; i < blobs.length; i++){
+    const b = blobs[i];
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(b[3], 1), i % 2 ? M.leafDark : M.leaf);
+    m.position.set(b[0], b[1], b[2]); m.scale.y = 0.82;
+    m.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+    g.add(m);
+  }
+  g.scale.setScalar(s || 1);
+  g.rotation.y = Math.random()*Math.PI*2;
+  g.position.set(x, 0, z);
+  scene.add(g);
+  BLOCKERS.push({ x, z, r: 0.55*(s || 1) });
+}
+plant( 10.6, -10.6, 1.15);
+plant(-10.6, -10.6, 1.15);
+plant( 10.6,  10.6, 1.15);
+plant( 50.8, -4.8, 1);
+plant(-50.8, -4.8, 1);
+
+/* ============================================================
+   SIGNAGE (canvas textures)
+   ============================================================ */
+function canvasTexture(w, h, draw){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO;
+  return t;
+}
+function plane(w,h, tex, x,y,z, rotY){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({ map:tex }));
+  m.position.set(x,y,z); m.rotation.y = rotY || 0; scene.add(m); return m;
+}
+const COND = "'Arial Narrow','Roboto Condensed',Arial,sans-serif";
+const MONO = "'Consolas','Menlo',monospace";
+
+/* ---- red & black showroom tile floor ---- */
+const tileTex = canvasTexture(512, 512, (g)=>{
+  g.fillStyle = '#17181b'; g.fillRect(0,0,512,512);                      /* black tiles */
+  g.fillStyle = '#c01722'; g.fillRect(0,0,256,256); g.fillRect(256,256,256,256);  /* red tiles */
+  g.lineWidth = 6; g.strokeStyle = '#0b0c0e';                            /* grout seams */
+  for (const p of [[0,0],[256,0],[0,256],[256,256]]) g.strokeRect(p[0]+3, p[1]+3, 250, 250);
+  g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,0.07)';             /* faint tile bevel */
+  for (const p of [[0,0],[256,0],[0,256],[256,256]]) g.strokeRect(p[0]+9, p[1]+9, 238, 238);
+});
+tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+tileTex.repeat.set(65, 20);              /* 1 m tiles across the 130 x 40 slab */
+M.floor.map = tileTex;
+M.floor.needsUpdate = true;
+
+/* ---- vending machine, south-west corner of the lobby ---- */
+const vendTex = canvasTexture(512, 1024, (g)=>{
+  g.fillStyle = '#141518'; g.fillRect(0,0,512,1024);
+  g.fillStyle = '#d21f2b'; g.fillRect(0,0,512,140);
+  g.textAlign = 'center'; g.fillStyle = '#ffffff'; g.font = "800 68px " + COND;
+  g.letterSpacing = '6px';
+  g.fillText('COLD DRINKS', 256, 92);
+  g.letterSpacing = '0px'; g.textAlign = 'left';
+  g.fillStyle = '#1f2126'; g.fillRect(28, 168, 456, 600);
+  const cols = ['#d21f2b','#2b6fd8','#e07b1f','#2fa356','#c8cbcf','#e8c11c'];
+  for (let row = 0; row < 3; row++){
+    const shelfY = 330 + row*200;
+    g.fillStyle = '#3a3d40'; g.fillRect(28, shelfY, 456, 8);
+    for (let i = 0; i < 6; i++){
+      g.fillStyle = cols[(i+row) % 6];
+      g.fillRect(48 + i*72, shelfY-100, 52, 96);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(48 + i*72 + 8, shelfY-100, 10, 96);
+    }
+  }
+  g.fillStyle = '#0c0d0f'; g.fillRect(60, 810, 300, 130);       /* dispenser flap */
+  g.fillStyle = '#26282b'; g.fillRect(396, 810, 76, 130);       /* coin panel */
+  g.fillStyle = '#8a8d91'; g.fillRect(414, 830, 40, 6);         /* coin slot */
+});
+const vend = new THREE.Group();
+const vendBody = new THREE.Mesh(new THREE.BoxGeometry(0.98, 1.9, 0.78), M.steel);
+vendBody.position.y = 0.95; vend.add(vendBody);
+const vendFace = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.78),
+  new THREE.MeshBasicMaterial({ map: vendTex }));
+vendFace.position.set(0, 0.95, 0.395); vend.add(vendFace);
+const vendGlow = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.7, 0.035), M.lightbar);
+vendGlow.position.set(-0.51, 0.95, 0.38); vend.add(vendGlow);
+const vendGlow2 = vendGlow.clone(); vendGlow2.position.x = 0.51; vend.add(vendGlow2);
+vend.position.set(-9.6, 0, 11.3); vend.rotation.y = Math.PI;
+scene.add(vend);
+BLOCKERS.push({ x:-9.6, z:11.3, r:0.85 });
+
+/* ------------------------------------------------------------
+   MAIN SIGN — north wall.
+   Backlit halo lettering: a matte black plate standing proud of
+   the wall, a warm LED strip, and warm light washing the wall
+   behind it. Built in four layers, back to front.
+   ------------------------------------------------------------ */
+const SIGN_Y = 3.95, WALL_Z = -11.85;
+
+function alphaPlane(w, h, cw, ch, draw, x, y, z, blend){
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  draw(c.getContext('2d'), cw, ch);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map:t, transparent:true, depthWrite:false,
+      blending: blend || THREE.NormalBlending }));
+  m.position.set(x, y, z); scene.add(m); return m;
+}
+
+/* layer 1 — warm light spilling onto the wall behind the plate */
+alphaPlane(13.5, 6.4, 1024, 512, (g,w,h)=>{
+  g.clearRect(0,0,w,h);
+  const gr = g.createRadialGradient(w/2, h*0.52, 30, w/2, h*0.52, w*0.46);
+  gr.addColorStop(0.00, 'rgba(255,196,110,0.85)');
+  gr.addColorStop(0.28, 'rgba(255,170,80,0.42)');
+  gr.addColorStop(0.62, 'rgba(240,140,55,0.14)');
+  gr.addColorStop(1.00, 'rgba(240,140,55,0)');
+  g.fillStyle = gr; g.fillRect(0,0,w,h);
+  const bar = g.createLinearGradient(0, 0, 0, h);
+  bar.addColorStop(0.00, 'rgba(255,180,90,0)');
+  bar.addColorStop(0.47, 'rgba(255,205,130,0.55)');
+  bar.addColorStop(0.53, 'rgba(255,205,130,0.55)');
+  bar.addColorStop(1.00, 'rgba(255,180,90,0)');
+  g.fillStyle = bar; g.fillRect(0,0,w,h);
+}, 0, SIGN_Y, WALL_Z + 0.02, THREE.AdditiveBlending);
+
+/* layer 2 — matte black plate, mounted 14 cm off the wall */
+const signPlate = new THREE.Mesh(new THREE.BoxGeometry(7.4, 2.5, 0.07),
+  new THREE.MeshStandardMaterial({ color:0x141517, roughness:0.85, metalness:0.15 }));
+signPlate.position.set(0, SIGN_Y, WALL_Z + 0.16); scene.add(signPlate);
+
+/* mounting standoffs, visible from an angle */
+const standoff = new THREE.CylinderGeometry(0.035, 0.035, 0.14, 10);
+for (const sx of [-3.3, 3.3]) for (const sy of [-0.95, 0.95]){
+  const p = new THREE.Mesh(standoff, M.steel);
+  p.rotation.x = Math.PI/2;
+  p.position.set(sx, SIGN_Y + sy, WALL_Z + 0.08); scene.add(p);
+}
+
+/* layer 3 — the face: warm edge-lit type on the black plate */
+alphaPlane(7.4, 2.5, 2048, 692, (g,w,h)=>{
+  g.clearRect(0,0,w,h);
+  g.textBaseline = 'alphabetic';
+
+  const barY = 432, barH = 15;
+  const bg = g.createLinearGradient(0, 0, w, 0);
+  bg.addColorStop(0.00, 'rgba(255,168,70,0.25)');
+  bg.addColorStop(0.16, '#ffc06a');
+  bg.addColorStop(0.84, '#ffc06a');
+  bg.addColorStop(1.00, 'rgba(255,168,70,0.25)');
+  g.shadowColor = 'rgba(255,168,70,0.95)'; g.shadowBlur = 42;
+  g.fillStyle = bg; g.fillRect(96, barY, w-192, barH);
+  g.fillRect(96, barY, w-192, barH);
+
+  g.textAlign = 'right';
+  g.letterSpacing = '8px';
+  g.shadowColor = 'rgba(255,150,55,0.9)'; g.shadowBlur = 34;
+  g.fillStyle = '#ffd9a0'; g.font = "800 200px " + COND;
+  g.fillText("ATIF'S VAULT", w-118, barY - 58);
+  g.fillText("ATIF'S VAULT", w-118, barY - 58);
+
+  g.shadowBlur = 0; g.textAlign = 'left';
+  g.letterSpacing = '14px';
+  const boxLabel = 'PRIVATE COLLECTION';
+  const padX = 34, boxX = 118, boxTop = barY - 8, boxH = 118, boxMax = 900;
+  let fs = 62, boxW;
+  do {
+    g.font = "800 " + fs + "px " + COND;
+    boxW = Math.ceil(g.measureText(boxLabel).width) + padX*2;
+    if (boxW <= boxMax) break;
+    fs -= 2;
+  } while (fs > 30);
+  g.strokeStyle = '#ffc06a'; g.lineWidth = 5;
+  g.strokeRect(boxX, boxTop, boxW, boxH);
+  g.fillStyle = '#141517'; g.fillRect(boxX+3, boxTop+3, boxW-6, boxH-6);
+  g.shadowColor = 'rgba(255,168,70,0.8)'; g.shadowBlur = 22;
+  g.fillStyle = '#ffcf8c';
+  g.fillText(boxLabel, boxX + padX, barY + 76);
+
+  g.shadowBlur = 0;
+  g.fillStyle = '#d21f2b'; g.fillRect(118, barY + 148, 96, 7);
+  g.letterSpacing = '11px';
+  g.fillStyle = '#9a8f80'; g.font = "400 40px " + MONO;
+  g.fillText('MODERN PERFORMANCE COLLECTION', 236, barY + 162);
+  g.letterSpacing = '0px';
+}, 0, SIGN_Y, WALL_Z + 0.205);
+
+/* layer 4 — the physical strip light under the plate */
+const stripMat = new THREE.MeshBasicMaterial({ color:0xffc06a });
+const strip = new THREE.Mesh(new THREE.BoxGeometry(6.9, 0.05, 0.05), stripMat);
+strip.position.set(0, SIGN_Y - 1.31, WALL_Z + 0.15); scene.add(strip);
+const signLamp = new THREE.PointLight(0xffb066, 6.5, 13, 2);
+signLamp.position.set(0, SIGN_Y - 0.5, WALL_Z + 1.0); scene.add(signLamp);
+
+/* wing labels above the doorways, facing the lobby */
+function wingLabel(text, chip){
+  return canvasTexture(1536, 280, (g)=>{
+    g.fillStyle = '#f7f8f9'; g.fillRect(0,0,1536,280);
+    g.fillStyle = '#d21f2b'; g.fillRect(60,50,180,180);
+    g.fillStyle = '#ffffff'; g.font = "800 150px " + COND;
+    g.textAlign = 'center'; g.fillText(chip, 150, 202);
+    g.textAlign = 'left';
+    g.fillStyle = '#1b1c1e'; g.font = "800 130px " + COND;
+    g.fillText(text, 300, 195);
+  });
+}
+plane(6, 1.1, wingLabel('AMERICAN MUSCLE','A'), -11.83, 5.35, 0,  Math.PI/2);
+plane(6, 1.1, wingLabel('EURO + JDM','B'),       11.83, 5.35, 0, -Math.PI/2);
+
+/* collection register (credits) — south wall, CC-BY attribution */
+/* credits come from approved manifest entries only (CC-BY condition: attribute what you show) */
+const CREDITS = creditsFor(MANIFEST, CARS);
+const PLACEHOLDER_COUNT = CARS.length - CREDITS.length;
+plane(5.4, 4.05, canvasTexture(1280, 960, (g)=>{
+  g.fillStyle = '#f7f8f9'; g.fillRect(0,0,1280,960);
+  g.fillStyle = '#d21f2b'; g.fillRect(80,72,26,60);
+  g.fillStyle = '#1b1c1e'; g.font = "800 64px " + COND;
+  g.fillText('COLLECTION REGISTER', 132, 124);
+  g.font = "400 30px " + MONO;
+  let y = 220;
+  for (let i=0;i<CREDITS.length;i++){
+    g.fillStyle = '#8a8d91'; g.fillText(String(i+1).padStart(2,'0'), 90, y);
+    g.fillStyle = '#1b1c1e'; g.fillText(CREDITS[i][0], 160, y);
+    g.fillStyle = '#55585c'; g.fillText('— ' + CREDITS[i][1], 760, y);
+    y += 54;
+  }
+  g.fillStyle = '#8a8d91'; g.font = "400 26px " + MONO;
+  if (!CREDITS.length){
+    g.fillStyle = '#55585c'; g.fillText('PLACEHOLDER MODELS ON DISPLAY', 160, y);
+    g.fillText('LICENSED MODELS PENDING APPROVAL', 160, y + 54);
+  }
+  g.fillStyle = '#8a8d91'; g.font = "400 26px " + MONO;
+  g.fillText(PLACEHOLDER_COUNT ? PLACEHOLDER_COUNT + ' PROCEDURAL PLACEHOLDER(S) · NO THIRD-PARTY MODELS' : 'ALL MODELS CREDITED ABOVE', 90, 890);
+}), 0, 3.1, 11.83, Math.PI);
+
+/* ============================================================
+   PLINTHS, TURNTABLES, PORTRAIT FRAMES
+   ============================================================ */
+const shadowTex = canvasTexture(256,256,(g)=>{
+  const grd = g.createRadialGradient(128,128,10,128,128,124);
+  grd.addColorStop(0,'rgba(10,12,14,0.36)'); grd.addColorStop(1,'rgba(10,12,14,0)');
+  g.fillStyle = grd; g.fillRect(0,0,256,256);
+});
+
+const turntables = [];   /* { car, group, pos, speed } */
+/* ------------------------------------------------------------
+   Red dot-matrix ticker wrapped around a plinth. The message is
+   drawn once, then tiled however many times fit around the
+   circumference at its natural aspect ratio — so the type is the
+   same physical height on every plinth and the loop is seamless.
+   ------------------------------------------------------------ */
+const TICKER_MSG = "WELCOME  TO  ATIF'S  VAULT";
+const LED_RED  = { core:'#ff2f22', hi:'#ff8168', glow:'rgba(255,40,30,0.95)' };
+const LED_GOLD = { core:'#f0a41c', hi:'#ffe7b0', glow:'rgba(255,178,45,0.95)' };
+function ledStrip(msg, radius, bandH, pal){
+  pal = pal || LED_RED;
+  const H = 192, FS = 112, GAP = 420;
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = "800 " + FS + "px " + COND;
+  probe.letterSpacing = '12px';
+  const textW = Math.ceil(probe.measureText(msg).width);
+  const SEG = Math.max(600, textW + GAP);
+
+  const mPerPx = bandH / H;
+  const circ = Math.PI * 2 * radius;
+  const reps = Math.max(1, Math.round(circ / (SEG * mPerPx)));
+
+  const c = document.createElement('canvas');
+  c.width = SEG; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0a0a0c'; g.fillRect(0,0,SEG,H);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.letterSpacing = '12px';
+  g.font = "800 " + FS + "px " + COND;
+  g.shadowColor = pal.glow; g.shadowBlur = 28;
+  g.fillStyle = pal.core; g.fillText(msg, SEG/2, H/2);
+  g.fillStyle = pal.hi;   g.fillText(msg, SEG/2, H/2);
+  g.shadowBlur = 0;
+  g.fillStyle = pal.core;
+  g.beginPath(); g.arc(GAP/4, H/2, 8, 0, Math.PI*2); g.fill();
+
+  /* punch the pixel grid through so it reads as discrete LEDs */
+  g.globalCompositeOperation = 'destination-out';
+  g.fillStyle = 'rgba(0,0,0,0.55)';
+  for (let x = 0; x < SEG; x += 7) g.fillRect(x, 0, 2, H);
+  for (let y = 0; y < H;   y += 7) g.fillRect(0, y, SEG, 2);
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = '#0a0a0c';
+  g.fillRect(0, 0, SEG, 9); g.fillRect(0, H-9, SEG, 9);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO;
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
+  t.repeat.set(reps, 1);
+  return { tex: t, segWorld: circ / reps };
+}
+
+const frames = {};       /* key -> {ctx, tex, draw} for portrait canvases */
+let ceilingTicker = null, ceilingScroll = 0;
+
+for (const car of CARS){
+  const hero = car.wing === 'HERO';
+  const pr = hero ? 3.0 : 2.6, ph = hero ? 0.32 : 0.28;
+
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(pr,pr,ph,64), M.plinth);
+  plinth.position.set(car.x, ph/2, car.z); scene.add(plinth);
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(pr+0.06,pr+0.06,0.06,64), M.ring);
+  ring.position.set(car.x, 0.03, car.z); scene.add(ring);
+
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(pr*1.72, pr*1.72),
+    new THREE.MeshBasicMaterial({ map:shadowTex, transparent:true, depthWrite:false }));
+  sh.rotation.x = -Math.PI/2; sh.position.set(car.x, ph+0.011, car.z); scene.add(sh);
+
+  const group = new THREE.Group();
+  group.position.set(car.x, ph, car.z);
+  group.rotation.y = Math.random()*Math.PI*2;
+  scene.add(group);
+
+  /* LED ticker wrapped around the plinth — the hero runs the welcome
+     message, every other plinth runs its own car's name and write-up */
+  const bandH = hero ? 0.22 : 0.19;
+  const bandY = 0.075 + bandH/2;
+  const bandR = pr + 0.035;
+  const msg = (car.name + '   \u2014   ' + car.blurb).toUpperCase().replace(/\s+/g, ' ');
+  const built = ledStrip(msg, bandR, bandH);
+
+  const ledCore = new THREE.Mesh(
+    new THREE.CylinderGeometry(bandR, bandR, bandH, 96, 1, true),
+    new THREE.MeshBasicMaterial({ map: built.tex, side: THREE.DoubleSide }));
+  ledCore.position.set(car.x, bandY, car.z); scene.add(ledCore);
+
+  const lip = new THREE.Mesh(new THREE.CylinderGeometry(pr+0.055, pr+0.055, 0.03, 96), M.ring);
+  lip.position.set(car.x, bandY + bandH/2 + 0.012, car.z); scene.add(lip);
+
+  turntables.push({ car, group, ledCore,
+    ledTicker: built.tex,
+    scroll: 0.95 / built.segWorld,
+    pos: new THREE.Vector3(car.x, 1.0, car.z),
+    speed: (Math.PI*2) / (9.5 + (turntables.length % 4) * 1.2) });
+
+  /* portrait frame on the wall behind the car */
+  let fx = car.x, fz, frot;
+  if (hero){ fx = -8.6; fz = -11.8; frot = 0; }
+  else if (car.z > 0){ fz =  5.8; frot = Math.PI; }
+  else               { fz = -5.8; frot = 0; }
+
+  /* graphite border sits just behind the portrait canvas */
+  const border = new THREE.Mesh(new THREE.PlaneGeometry(3.3,2.34), new THREE.MeshBasicMaterial({ color:0x26282b }));
+  border.position.set(fx, 2.55, fz + (frot === 0 ? -0.012 : 0.012));
+  border.rotation.y = frot; scene.add(border);
+
+  const fc = document.createElement('canvas'); fc.width = 1024; fc.height = 700;
+  const fg = fc.getContext('2d');
+  const label = (car.wing==='HERO' ? '\u25A0' : car.wing + car.idx) + '  —  ' + car.name.toUpperCase();
+  function drawFrame(img){
+    fg.fillStyle = '#e9eaec'; fg.fillRect(0,0,1024,700);
+    if (img){ 
+      const s = Math.max(1024/img.width, 560/img.height);
+      const iw = img.width*s, ih = img.height*s;
+      fg.save(); fg.beginPath(); fg.rect(0,0,1024,560); fg.clip();
+      fg.drawImage(img, (1024-iw)/2, (560-ih)/2, iw, ih); fg.restore();
+    } else {
+      fg.fillStyle = '#dcdee0'; fg.fillRect(0,0,1024,560);
+      fg.fillStyle = '#b6b9bc'; fg.font = "800 54px " + COND;
+      fg.textAlign='center'; fg.fillText('PORTRAIT PENDING', 512, 300); fg.textAlign='left';
+    }
+    fg.fillStyle = '#fdfdfe'; fg.fillRect(0,560,1024,140);
+    fg.fillStyle = '#d21f2b'; fg.fillRect(46,600,16,56);
+    fg.fillStyle = '#1b1c1e'; fg.font = "800 52px " + COND;
+    fg.fillText(label, 92, 648);
+  }
+  drawFrame(null);
+  const ftex = new THREE.CanvasTexture(fc);
+  ftex.colorSpace = THREE.SRGBColorSpace; ftex.anisotropy = MAX_ANISO;
+  plane(3.14, 2.14, ftex, fx, 2.55, fz, frot);
+
+  const asset = approvedAsset(MANIFEST, car.key);
+  if (asset && asset.portrait){
+    const img = new Image();
+    img.onload = ()=>{ drawFrame(img); ftex.needsUpdate = true; };
+    img.src = asset.portrait;
+  }
+}
+
+/* ------------------------------------------------------------
+   CEILING RING — golden LED ticker over the hero plinth,
+   replacing the plain white torus. Doubles as the lobby's
+   centre light: an emissive downward face plus a warm lamp.
+   ------------------------------------------------------------ */
+{
+  const CR = 3.10, CH = 0.34, CY = 5.42;
+  const ceil = ledStrip(TICKER_MSG, CR, CH, LED_GOLD);
+  ceilingTicker = ceil.tex;
+  ceilingScroll = 0.85 / ceil.segWorld;
+
+  const band = new THREE.Mesh(
+    new THREE.CylinderGeometry(CR, CR, CH, 128, 1, true),
+    new THREE.MeshBasicMaterial({ map: ceil.tex, side: THREE.DoubleSide }));
+  band.position.set(0, CY, 0); scene.add(band);
+
+  /* graphite housing capping the band top and bottom */
+  for (const dy of [CH/2 + 0.025, -CH/2 - 0.025]){
+    const cap = new THREE.Mesh(new THREE.TorusGeometry(CR + 0.01, 0.05, 10, 96), M.steel);
+    cap.rotation.x = Math.PI/2; cap.position.set(0, CY + dy, 0); scene.add(cap);
+  }
+
+  /* warm downward-facing emitter inside the ring, so the ceiling
+     still puts light on the hero car now the white torus is gone */
+  const face = new THREE.Mesh(new THREE.RingGeometry(CR - 0.42, CR - 0.02, 96),
+    new THREE.MeshBasicMaterial({ color:0xffca62, side:THREE.DoubleSide }));
+  face.rotation.x = Math.PI/2; face.position.set(0, CY - CH/2 - 0.04, 0); scene.add(face);
+
+  const spill = new THREE.Mesh(new THREE.RingGeometry(CR - 0.02, CR + 1.35, 96),
+    new THREE.MeshBasicMaterial({ color:0xffb43a, transparent:true, opacity:0.13,
+      blending:THREE.AdditiveBlending, depthWrite:false }));
+  spill.rotation.x = Math.PI/2; spill.position.set(0, CY - CH/2 - 0.05, 0); scene.add(spill);
+
+  const heroLamp = new THREE.PointLight(0xffc067, 9, 16, 2);
+  heroLamp.position.set(0, CY - 0.5, 0); scene.add(heroLamp);
+}
+
+/* ============================================================
+   MODEL LOADING — sequential, hero first
+   ============================================================ */
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+const listEl = document.getElementById('loadList');
+const loadline = document.getElementById('loadline');
+const rows = {};
+listEl.innerHTML = CARS.map(c => '<div id="row_'+c.key+'">\u25CB '+c.key.replace('_',' ')+'</div>').join('');
+for (const c of CARS) rows[c.key] = document.getElementById('row_'+c.key);
+
+let loadedCount = 0;
+function markRow(key, state){
+  const el = rows[key];
+  if (state === 'done'){ el.textContent = '\u25CF ' + el.textContent.slice(2); el.className = 'done'; }
+  if (state === 'placeholder'){ el.textContent = '\u25A1 ' + el.textContent.slice(2); el.className = 'done'; }
+  if (state === 'err') { el.textContent = '\u2715 ' + el.textContent.slice(2); el.className = 'err'; }
+  loadline.textContent = 'Loading collection\u2026 ' + loadedCount + ' / ' + CARS.length;
+}
+
+function prepareCar(root, targetLen, key){
+  root.updateMatrixWorld(true);
+  const rough = new THREE.Box3().setFromObject(root);
+  const roughSize = rough.getSize(new THREE.Vector3());
+
+  /* strip lights/cameras; hide baked ground-shadow / backdrop planes
+     (flat, wide meshes sitting at the very bottom of the model) */
+  const junk = [];
+  root.traverse(o=>{
+    if (o.isLight || o.isCamera){ junk.push(o); return; }
+    if (o.isMesh){
+      const nm = (o.name || '').toLowerCase();
+      const mb = new THREE.Box3().setFromObject(o);
+      const ms = mb.getSize(new THREE.Vector3());
+      const flatWide =
+        ms.y < roughSize.y * 0.012 &&
+        Math.max(ms.x, ms.z) > Math.max(roughSize.x, roughSize.z) * 0.55 &&
+        mb.min.y < rough.min.y + roughSize.y * 0.1;
+      if (flatWide || /shadow|backdrop|studio/.test(nm)) o.visible = false;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats){ if (m && m.map) m.map.anisotropy = MAX_ANISO; }
+    }
+  });
+  for (const j of junk) j.parent && j.parent.remove(j);
+
+  /* sample only real, visible surface vertices */
+  const v = new THREE.Vector3();
+  let minX=Infinity, maxX=-Infinity, minZ=Infinity, maxZ=-Infinity;
+  const ys = [];
+  root.traverse(o=>{
+    if (!o.isMesh || !o.visible) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (mats.every(m => !m || m.visible === false || (m.transparent && m.opacity < 0.15))) return;
+    const pos = o.geometry && o.geometry.getAttribute('position');
+    if (!pos) return;
+    const step = Math.max(1, Math.floor(pos.count / 6000));
+    for (let i = 0; i < pos.count; i += step){
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (!isFinite(v.x + v.y + v.z)) continue;
+      if (v.x < minX) minX = v.x;  if (v.x > maxX) maxX = v.x;
+      if (v.z < minZ) minZ = v.z;  if (v.z > maxZ) maxZ = v.z;
+      ys.push(v.y);
+    }
+  });
+
+  if (!ys.length){
+    /* fallback: plain bounding-box fit */
+    const b = new THREE.Box3().setFromObject(root);
+    const size = b.getSize(new THREE.Vector3());
+    const s2 = targetLen / Math.max(size.x, size.z, 0.001);
+    root.scale.setScalar(s2);
+    const b2 = new THREE.Box3().setFromObject(root);
+    const c = b2.getCenter(new THREE.Vector3());
+    root.position.x -= c.x; root.position.z -= c.z; root.position.y -= b2.min.y;
+    return;
+  }
+
+  const horiz = Math.max(maxX - minX, maxZ - minZ, 0.001);
+  const s = targetLen / horiz;
+  root.scale.setScalar(s);
+
+  /* ground = lowest level with real vertex density, so a handful of
+     stray junk vertices below the tires can't push the car upward */
+  ys.sort((a,b)=>a-b);
+  const need = Math.max(16, ys.length * 0.0015);
+  const band = 0.05 / s;                    /* 5 cm at final scale */
+  let ground = ys[0];
+  for (let i = 0; i < ys.length; i++){
+    let j = i; const top = ys[i] + band;
+    while (j < ys.length && ys[j] <= top) j++;
+    if (j - i >= need){ ground = ys[i]; break; }
+  }
+  /* sanity cap: never lift more than 12 cm above the lowest real vertex */
+  ground = Math.min(ground, ys[0] + 0.12 / s);
+
+  root.position.x -= (minX + maxX) / 2 * s;
+  root.position.z -= (minZ + maxZ) / 2 * s;
+  root.position.y -= ground * s;
+  console.log('[vault]', key, 'scale', s.toFixed(3), 'ground', (ground * s).toFixed(3));
+}
+
+/* ------------------------------------------------------------
+   PAINT SWAP — retints only the yellow pixels of a car's paint,
+   so sponsor decals, glass, tyres and chrome are left alone.
+   ------------------------------------------------------------ */
+function rgb2hsl(r,g,b){
+  r/=255; g/=255; b/=255;
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l = (mx+mn)/2;
+  if (mx === mn) return [0,0,l];
+  const d = mx - mn;
+  const s = l > 0.5 ? d/(2-mx-mn) : d/(mx+mn);
+  let h;
+  if (mx === r)      h = ((g-b)/d + (g < b ? 6 : 0));
+  else if (mx === g) h = ((b-r)/d + 2);
+  else               h = ((r-g)/d + 4);
+  return [h*60, s, l];
+}
+function hsl2rgb(h,s,l){
+  h = ((h % 360) + 360) % 360 / 360;
+  if (s === 0){ const v = Math.round(l*255); return [v,v,v]; }
+  const q = l < 0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+  const hue = (t)=>{
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q-p)*6*t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q-p)*(2/3-t)*6;
+    return p;
+  };
+  return [Math.round(hue(h+1/3)*255), Math.round(hue(h)*255), Math.round(hue(h-1/3)*255)];
+}
+
+/* hue window that counts as "the yellow paint", and where it lands */
+const REPAINT = {
+  mustang: { fromLo:28, fromHi:78, minSat:0.18, minLum:0.06, toHue:152, toSat:0.70, lumMul:0.22 }
+};
+
+function repaintTexture(tex, cfg){
+  const img = tex.image;
+  if (!img || !img.width) return null;
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently:true });
+  g.drawImage(img, 0, 0);
+  let data;
+  try { data = g.getImageData(0, 0, c.width, c.height); }
+  catch(e){ console.warn('[vault] repaint blocked', e); return null; }
+  const px = data.data;
+  let hits = 0;
+  for (let i = 0; i < px.length; i += 4){
+    if (px[i+3] < 8) continue;
+    const [h,s,l] = rgb2hsl(px[i], px[i+1], px[i+2]);
+    if (h < cfg.fromLo || h > cfg.fromHi || s < cfg.minSat || l < cfg.minLum) continue;
+    const [nr,ng,nb] = hsl2rgb(cfg.toHue, Math.min(0.95, s * (cfg.toSat/0.6)), l * cfg.lumMul);
+    px[i] = nr; px[i+1] = ng; px[i+2] = nb; hits++;
+  }
+  if (!hits) return null;
+  g.putImageData(data, 0, 0);
+  const nt = new THREE.CanvasTexture(c);
+  nt.colorSpace = tex.colorSpace; nt.flipY = tex.flipY; nt.wrapS = tex.wrapS; nt.wrapT = tex.wrapT;
+  nt.repeat.copy(tex.repeat); nt.offset.copy(tex.offset); nt.anisotropy = MAX_ANISO;
+  nt.needsUpdate = true;
+  return nt;
+}
+
+function repaintCar(root, key){
+  const cfg = REPAINT[key];
+  if (!cfg) return;
+  const done = new Map();
+  let painted = 0;
+  root.traverse(o=>{
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats){
+      if (!m || done.has(m)) continue;
+      done.set(m, 1);
+      if (m.map){
+        const nt = repaintTexture(m.map, cfg);
+        if (nt){ m.map = nt; m.color.setRGB(1,1,1); m.needsUpdate = true; painted++; }
+        continue;
+      }
+      const c = m.color; if (!c) continue;
+      const [h,s,l] = rgb2hsl(c.r*255, c.g*255, c.b*255);
+      if (h < cfg.fromLo || h > cfg.fromHi || s < cfg.minSat || l < cfg.minLum) continue;
+      const [nr,ng,nb] = hsl2rgb(cfg.toHue, Math.min(0.95, s * (cfg.toSat/0.6)), l * cfg.lumMul);
+      c.setRGB(nr/255, ng/255, nb/255); m.needsUpdate = true; painted++;
+    }
+  });
+  console.log('[vault] repaint', key, '->', painted, 'material(s)');
+}
+
+function loadNext(i){
+  if (i >= CARS.length){ VAULT.ready = true; document.documentElement.dataset.vaultReady = '1'; return; }
+  const car = CARS[i];
+  const tt = turntables[i];
+  const asset = approvedAsset(MANIFEST, car.key);
+  const usePlaceholder = ()=>{
+    tt.group.add(placeholderCar(car));
+    VAULT.placeholders.push(car.key);
+    loadedCount++; markRow(car.key, 'placeholder');
+    loadNext(i+1);
+  };
+  if (!asset) return usePlaceholder();
+  loader.load(asset.model, (gltf)=>{
+    const root = gltf.scene;
+    prepareCar(root, car.len, car.key);
+    repaintCar(root, car.key);
+    if (car.yOff) root.position.y += car.yOff;   /* manual nudge, set in CARS */
+    tt.group.add(root);
+    loadedCount++; markRow(car.key, 'done');
+    loadNext(i+1);
+  }, undefined, (err)=>{
+    console.warn('[vault] approved model failed, using placeholder', asset.model, err);
+    usePlaceholder();
+  });
+}
+loadNext(0);
+
+/* ============================================================
+   CONTROLS + COLLISION
+   ============================================================ */
+const controls = new PointerLockControls(camera, document.body);
+const player = controls.getObject();
+player.position.set(0, 1.7, 8.6);
+scene.add(player);
+
+const blocker = document.getElementById('blocker');
+const hud = document.getElementById('hud');
+blocker.addEventListener('click', ()=> controls.lock());
+controls.addEventListener('lock',   ()=>{ blocker.style.display = 'none'; hud.style.display = 'block'; });
+controls.addEventListener('unlock', ()=>{ blocker.style.display = 'flex'; hud.style.display = 'none'; });
+
+const keys = {};
+addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keyup',   e => keys[e.code] = false);
+
+/* ---- wheel zoom: eases the lens from 70 deg wide to 30 deg tight ---- */
+const FOV_WIDE = 70, FOV_TIGHT = 30;
+let fovTarget = FOV_WIDE;
+addEventListener('wheel', (e)=>{
+  if (!controls.isLocked) return;
+  e.preventDefault();
+  fovTarget = Math.min(FOV_WIDE, Math.max(FOV_TIGHT, fovTarget + Math.sign(e.deltaY) * 4));
+}, { passive:false });
+
+const ROOMS = [
+  { x1:-11.55, x2: 11.55, z1:-11.55, z2:11.55 },   /* lobby   */
+  { x1: 11.30, x2: 12.70, z1: -2.60, z2: 2.60 },   /* door E  */
+  { x1: 12.55, x2: 51.55, z1: -5.55, z2: 5.55 },   /* wing B  */
+  { x1:-12.70, x2:-11.30, z1: -2.60, z2: 2.60 },   /* door W  */
+  { x1:-51.55, x2:-12.55, z1: -5.55, z2: 5.55 },   /* wing A  */
+];
+function canStand(x, z){
+  let ok = false;
+  for (const r of ROOMS){ if (x>r.x1 && x<r.x2 && z>r.z1 && z<r.z2){ ok = true; break; } }
+  if (!ok) return false;
+  for (const b of BLOCKERS){
+    const dx = x - b.x, dz = z - b.z;
+    if (dx*dx + dz*dz < b.r*b.r) return false;
+  }
+  for (const t of turntables){
+    const dx = x - t.pos.x, dz = z - t.pos.z;
+    const rr = (t.car.wing==='HERO' ? 3.55 : 3.15);
+    if (dx*dx + dz*dz < rr*rr) return false;
+  }
+  return true;
+}
+
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+
+/* ============================================================
+   SPIN CULLING + INFO CARD + LOOP
+   ============================================================ */
+const frustum = new THREE.Frustum();
+const projMat = new THREE.Matrix4();
+const sphere = new THREE.Sphere();
+
+const cardEl  = document.getElementById('card');
+const cardMeta = document.getElementById('cardMeta');
+const cardName = document.getElementById('cardName');
+const cardBlurb = document.getElementById('cardBlurb');
+let cardKey = null;
+
+const clock = new THREE.Clock();
+const camDir = new THREE.Vector3(), toCar = new THREE.Vector3();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  /* movement */
+  if (controls.isLocked){
+    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+    right.crossVectors(fwd, up).normalize();
+    const mz = (keys['KeyW']?1:0) - (keys['KeyS']?1:0);
+    const mx = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+    if (mz || mx){
+      const speed = 4.4 * (keys['ShiftLeft']||keys['ShiftRight'] ? 1.85 : 1) * dt;
+      const vx = (fwd.x*mz + right.x*mx), vz = (fwd.z*mz + right.z*mx);
+      const n = Math.hypot(vx,vz) || 1;
+      const dx = vx/n*speed, dz = vz/n*speed;
+      if (canStand(player.position.x + dx, player.position.z)) player.position.x += dx;
+      if (canStand(player.position.x, player.position.z + dz)) player.position.z += dz;
+      fovTarget = FOV_WIDE;                     /* walking pulls the lens back out */
+    }
+  }
+
+  /* ease the lens toward its target; look speed scales with it so a
+     tight zoom gets fine mouse control instead of whipping around */
+  if (Math.abs(camera.fov - fovTarget) > 0.01){
+    camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 10);
+    camera.updateProjectionMatrix();
+    controls.pointerSpeed = camera.fov / FOV_WIDE;
+  }
+
+  /* spin culling: rotate only turntables in view and nearby */
+  projMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(projMat);
+  const tNow = clock.elapsedTime;
+  for (const t of turntables){
+    sphere.center.copy(t.pos); sphere.radius = 3.2;
+    const d2 = player.position.distanceToSquared(t.pos);
+    const active = d2 < 28*28 && frustum.intersectsSphere(sphere);
+    if (active) t.group.rotation.y += t.speed * dt;
+    if (active) t.ledTicker.offset.x = (t.ledTicker.offset.x + dt * t.scroll) % 1;
+  }
+  if (ceilingTicker) ceilingTicker.offset.x = (ceilingTicker.offset.x + dt * ceilingScroll) % 1;
+  for (const c of camPivots){
+    c.pivot.rotation.y = Math.sin(tNow*0.35 + c.phase) * 0.4;
+    c.led.visible = ((tNow + c.phase) % 1.6) < 1.1;
+  }
+
+  /* proximity info card */
+  if (controls.isLocked){
+    camera.getWorldDirection(camDir);
+    let best = null, bestD = 6.5*6.5;
+    for (const t of turntables){
+      const d2 = player.position.distanceToSquared(t.pos);
+      if (d2 > bestD) continue;
+      toCar.copy(t.pos).sub(player.position); toCar.y = 0; toCar.normalize();
+      if (camDir.dot(toCar) > 0.55){ best = t; bestD = d2; }
+    }
+    if (best && cardKey !== best.car.key){
+      cardKey = best.car.key;
+      cardMeta.textContent = WING_LABEL[best.car.wing] + ' · ' + (best.car.wing==='HERO' ? '\u25A0' : best.car.wing + best.car.idx);
+      cardName.textContent = best.car.name;
+      cardBlurb.textContent = best.car.blurb;
+      cardEl.classList.add('show');
+    } else if (!best && cardKey){
+      cardKey = null; cardEl.classList.remove('show');
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

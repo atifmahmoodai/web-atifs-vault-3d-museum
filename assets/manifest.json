@@ -1,0 +1,16 @@
+{
+  "_readme": "Asset approval register. A model is only loaded when approved is true, the licence is on the allow-list in src/assets.js and attribution is complete. Run `npm run check:assets` after editing. Provenance of the original build is kept here, unapproved, until the owner confirms each licence.",
+  "assets": [
+    { "key": "ferrari", "title": "Ferrari 288 GTO", "creator": "Randomness", "licence": "CC-BY-4.0", "source": "", "model": "optimized/ferrari.glb", "approved": false },
+    { "key": "charger", "title": "1969 Dodge Charger R/T", "creator": "Galaxy Car Showroom", "licence": "CC-BY-4.0", "source": "", "model": "optimized/charger.glb", "approved": false },
+    { "key": "aston", "title": "Aston Martin V12 Vantage", "creator": "Mona x Supercars", "licence": "CC-BY-4.0", "source": "", "model": "optimized/aston.glb", "approved": false },
+    { "key": "camaro", "title": "1970 Camaro Pro Touring", "creator": "everhard", "licence": "CC-BY-4.0", "source": "", "model": "optimized/camaro.glb", "approved": false },
+    { "key": "bmw_m4", "title": "BMW M4 F82", "creator": "Black Snow", "licence": "CC-BY-4.0", "source": "", "model": "optimized/bmw_m4.glb", "approved": false },
+    { "key": "challenger", "title": "1971 Dodge Challenger", "creator": "Aman buttar", "licence": "CC-BY-4.0", "source": "", "model": "optimized/challenger.glb", "approved": false },
+    { "key": "porsche", "title": "Porsche 911", "creator": "n.brizitskaya", "licence": "CC-BY-4.0", "source": "", "model": "optimized/porsche.glb", "approved": false },
+    { "key": "mustang", "title": "Ford Mustang John Bowe 1969", "creator": "vecarz", "licence": "CC-BY-4.0", "source": "", "model": "optimized/mustang.glb", "approved": false },
+    { "key": "amg_gt3", "title": "Mercedes-AMG GT3 Evo 2020", "creator": "vecarz", "licence": "CC-BY-4.0", "source": "", "model": "optimized/amg_gt3.glb", "approved": false },
+    { "key": "hoonicorn", "title": "Hoonicorn Ken Block", "creator": "vecarz", "licence": "CC-BY-4.0", "source": "", "model": "optimized/hoonicorn.glb", "approved": false },
+    { "key": "supra", "title": "Toyota Supra MK IV", "creator": "Martin Trafas", "licence": "CC-BY-4.0", "source": "", "model": "optimized/supra.glb", "approved": false }
+  ]
+}
